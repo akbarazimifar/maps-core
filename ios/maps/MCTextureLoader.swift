@@ -11,7 +11,20 @@
 import MapCoreSharedModule
 import UIKit
 
-open class MCTextureLoader: MCTextureLoaderInterface {
+class VectorDataHolder: MCVectorTileHolderInterface {
+    private var data: Data
+
+    init(data: Data) {
+        self.data = data
+    }
+
+    func getData() -> Data {
+        data
+    }
+}
+
+open class MCTextureLoader: MCTileLoaderInterface {
+
     private let session: URLSession
 
     public init(urlSession: URLSession? = nil) {
@@ -23,6 +36,51 @@ open class MCTextureLoader: MCTextureLoaderInterface {
             sessionConfig.networkServiceType = .responsiveData
             session = .init(configuration: sessionConfig)
         }
+    }
+
+    public func loadVectorTile(_ url: String) -> MCVectorTileLoaderResult {
+        let urlString = url
+        guard let url = URL(string: urlString) else {
+            preconditionFailure("invalid url: \(urlString)")
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+
+        var result: Data?
+        var response: HTTPURLResponse?
+        var error: NSError?
+
+        var urlRequest = URLRequest(url: url)
+
+        modifyUrlRequest(request: &urlRequest)
+
+        let task = session.dataTask(with: urlRequest) { data, response_, error_ in
+            result = data
+            response = response_ as? HTTPURLResponse
+            error = error_ as NSError?
+            semaphore.signal()
+        }
+
+        task.resume()
+        semaphore.wait()
+
+        if error?.domain == NSURLErrorDomain, error?.code == NSURLErrorTimedOut {
+            return .init(data: nil, status: .ERROR_TIMEOUT)
+        }
+
+        if response?.statusCode == 404 {
+            return .init(data: nil, status: .ERROR_404)
+        } else if response?.statusCode == 400 {
+            return .init(data: nil, status: .ERROR_400)
+        } else if response?.statusCode != 200 {
+            return .init(data: nil, status: .ERROR_NETWORK)
+        }
+
+        guard let data = result else {
+            return .init(data: nil, status: .ERROR_OTHER)
+        }
+
+        return .init(data:  VectorDataHolder(data: data), status: .OK)
     }
 
     public func loadTexture(_ url: String) -> MCTextureLoaderResult {
