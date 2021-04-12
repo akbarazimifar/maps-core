@@ -91,7 +91,10 @@ void Tiled2dMapVectorLayer::onTilesUpdated() {
 
                 while (auto layer = tileData.next_layer()) {
                     std::string layerName = std::string(layer.name());
+                    LogDebug <<= "Layername: " + layerName;
                     if (layerName == "water" && !layer.empty()) sublayer->updateTileData(tile, layer);
+                    if (layerName == "waterway" && !layer.empty()) sublayer->updateTileData(tile, layer);
+                    if (tile.tileInfo.zoomIdentifier >= 14 && layerName == "transportation" && !layer.empty()) sublayer->updateTileData(tile, layer);
                 }
             }
             catch (protozero::invalid_tag_exception tagException) {

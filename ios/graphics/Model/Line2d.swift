@@ -95,6 +95,11 @@ extension Line2d: MCLine2dInterface {
             return
         }
 
+        var miter: Float = 1.0;
+        if let shader = shader as? ColorLineShader {
+            miter = shader.miter
+        }
+
         var lineVertices: [Vertex] = []
         var indices: [UInt32] = []
 
@@ -108,7 +113,6 @@ extension Line2d: MCLine2dInterface {
             let lineNormalY = ciNext.xF - ci.xF
             let lineLength = sqrt(lineNormalX * lineNormalX + lineNormalY * lineNormalY)
 
-            let miter: Float = 100;
             let miterX: Float = lineNormalX / lineLength * miter / 2;
             let miterY: Float = lineNormalY / lineLength * miter / 2;
 

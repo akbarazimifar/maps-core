@@ -29,8 +29,8 @@ public:
     }
 
     void ring_point(vtzero::point point) noexcept {
-        double x = tileCoords.topLeft.x + tileWidth * (point.x / extent);
-        double y = tileCoords.topLeft.y + tileHeight * (point.y / extent);
+        double x = tileCoords.topLeft.x + tileWidth * (((double) point.x) / ((double) extent));
+        double y = tileCoords.topLeft.y + tileHeight * (((double) point.y) / ((double) extent));
         Coord newCoord = Coord(tileCoords.topLeft.systemIdentifier, x, y, 0.0);
         currentRing.push_back(newCoord);
         /*LogDebug <<= "        -> new point: (" + std::to_string(point.x) + ", " + std::to_string(point.y) + ") in extent " + std::to_string(extent);

@@ -13,6 +13,7 @@
 #include "MapInterface.h"
 #include "Tiled2dMapVectorSubLayer.h"
 #include "VectorTilePolygonHandler.h"
+#include "VectorTileLineStringHandler.h"
 #include "RenderObject.h"
 #include "RenderPass.h"
 #include "LambdaTask.h"
@@ -75,6 +76,7 @@ Tiled2dMapVectorSubLayer::updateTileData(const Tiled2dMapVectorTileInfo &tileInf
         LogDebug <<= "      with " + std::to_string(data.num_features()) + " features";
         int featureNum = 0;
         std::vector<const PolygonInfo> newPolygons;
+        std::vector<const LineInfo> newLines;
         while (const auto &feature = data.next_feature()) {
             if (feature.geometry_type() == vtzero::GeomType::POLYGON) {
                 auto polygonHandler = VectorTilePolygonHandler(tileInfo.tileInfo.bounds, extent);
@@ -91,9 +93,30 @@ Tiled2dMapVectorSubLayer::updateTileData(const Tiled2dMapVectorTileInfo &tileInf
                     newPolygons.push_back(polygonInfo);
                     featureNum++;
                 }
+            } else if (feature.geometry_type() == vtzero::GeomType::LINESTRING) {
+                auto lineHandler = VectorTileLineStringHandler(tileInfo.tileInfo.bounds, extent);
+                try {
+                    vtzero::decode_linestring_geometry(feature.geometry(), lineHandler);
+                } catch (vtzero::geometry_exception &geometryException) {
+                    continue;
+                }
+                float miter = 1;
+                feature.for_each_property([&](vtzero::property&& p) {
+                    std::string propertyName = std::string(p.key());
+                    LogDebug <<= "PropertyName: " + propertyName;
+                    if (propertyName == "width" && p.value().type() == vtzero::property_value_type::uint_value) {
+                        miter = p.value().uint_value();
+                    }
+                    return true;
+                });
+                std::string id = feature.has_id() ? std::to_string(feature.id()) : (defIdPrefix + std::to_string(featureNum));
+                auto lineCoordinates = lineHandler.getCoordinates();
+                const auto lineInfo = LineInfo(id, lineCoordinates, miter, fillColor, fillColor);
+                newLines.push_back(lineInfo);
             }
         }
         addPolygons(tileInfo, newPolygons);
+        addLines(tileInfo, newLines);
     }
 }
 
@@ -105,7 +128,49 @@ void Tiled2dMapVectorSubLayer::clearTileData(const Tiled2dMapVectorTileInfo &til
             polygonObject->getPolygonObject()->clear();
         }
         tilePolygonMap.erase(tileInfo);
+
+        const auto &lines = tileLineMap[tileInfo];
+        for (const auto &lineObject : lines) {
+            lineObject->getLineObject()->clear();
+        }
+        tileLineMap.erase(tileInfo);
     }
+}
+
+
+void
+Tiled2dMapVectorSubLayer::addLines(const Tiled2dMapVectorTileInfo &tileInfo, const std::vector<const LineInfo> &lines) {
+    if (lines.empty()) return;
+
+    const auto &objectFactory = mapInterface->getGraphicsObjectFactory();
+    const auto &shaderFactory = mapInterface->getShaderFactory();
+
+    std::vector<std::shared_ptr<Line2dInterface>> lineGraphicObjects;
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(updateMutex);
+        for (const auto &line : lines) {
+            auto shader = shaderFactory->createColorLineShader();
+            auto lineGraphicsObject = objectFactory->createLine(shader->asLineShaderProgramInterface());
+
+            auto lineObject =
+                    std::make_shared<Line2dLayerObject>(mapInterface->getCoordinateConverterHelper(), lineGraphicsObject, shader);
+
+            lineObject->setMiter(line.miter);
+            lineObject->setPositions(line.coordinates);
+            lineObject->setColor(line.color);
+
+            lineGraphicObjects.push_back(lineGraphicsObject);
+            tileLineMap[tileInfo].push_back(lineObject);
+        }
+    }
+    mapInterface->getScheduler()->addTask(std::make_shared<LambdaTask>(
+            TaskConfig("Tiled2dMapVectorSubLayer_addLines_setup_" + lines[0].identifier, 0, TaskPriority::NORMAL, ExecutionEnvironment::GRAPHICS),
+            [=] {
+                for (const auto &lineGraphicObject : lineGraphicObjects) {
+                    lineGraphicObject->asGraphicsObject()->setup(mapInterface->getRenderingContext());
+                }
+            }));
 }
 
 void
@@ -149,6 +214,14 @@ void Tiled2dMapVectorSubLayer::preGenerateRenderPasses() {
     for (auto const &polygonTuple : tilePolygonMap) {
         for (auto const &polygonObject : polygonTuple.second) {
             for (auto config : polygonObject->getRenderConfig()) {
+                renderPassObjectMap[config->getRenderIndex()].push_back(
+                        std::make_shared<RenderObject>(config->getGraphicsObject()));
+            }
+        }
+    }
+    for (auto const &lineTuple : tileLineMap) {
+        for (auto const &lineObject : lineTuple.second) {
+            for (auto config : lineObject->getRenderConfig()) {
                 renderPassObjectMap[config->getRenderIndex()].push_back(
                         std::make_shared<RenderObject>(config->getGraphicsObject()));
             }

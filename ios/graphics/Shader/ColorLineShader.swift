@@ -15,7 +15,7 @@ import Metal
 class ColorLineShader: BaseShader {
     private var color = SIMD4<Float>([0.0, 0.0, 0.0, 0.0])
 
-    private var miter: Float = 0.0
+    var miter: Float = 0.0
 
     private var linePipeline: MTLRenderPipelineState?
 
