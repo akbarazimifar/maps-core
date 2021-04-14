@@ -95,12 +95,7 @@ extension Line2d: MCLine2dInterface {
             return
         }
 
-        var miter: Float = 1.0;
-        if let shader = shader as? ColorLineShader {
-            miter = shader.miter
-        }
-
-        var lineVertices: [Vertex] = []
+        var lineVertices: [LineVertex] = []
         var indices: [UInt32] = []
 
         for i in 0 ..< (positions.count - 1) {
@@ -113,6 +108,7 @@ extension Line2d: MCLine2dInterface {
             let lineNormalY = ciNext.xF - ci.xF
             let lineLength = sqrt(lineNormalX * lineNormalX + lineNormalY * lineNormalY)
 
+            let miter: Float = (shader as? ColorLineShader)?.miter ?? 0;
             let miterX: Float = lineNormalX / lineLength * miter / 2;
             let miterY: Float = lineNormalY / lineLength * miter / 2;
 
@@ -122,14 +118,12 @@ extension Line2d: MCLine2dInterface {
             let ciNextX = ciNext.xF - (ci.xF - ciNext.xF) / lineLength * miter / 2
             let ciNextY = ciNext.yF - (ci.yF - ciNext.yF) / lineLength * miter / 2
 
-            let vertecies: [Vertex] = [
-                Vertex(x: ciX - miterX, y: ciY - miterY, p1:ci, p2: MCVec2D(x: Double(lineNormalX), y: Double(lineNormalY))), // A
-                Vertex(x: ciX + miterX, y: ciY + miterY, p1:ci, p2: MCVec2D(x: Double(lineNormalX), y: Double(lineNormalY))), // B
-                Vertex(x: ciNextX + miterX, y: ciNextY + miterY, p1:ci, p2: MCVec2D(x: Double(lineNormalX), y: Double(lineNormalY))), // C
-                Vertex(x: ciNextX - miterX, y: ciNextY - miterY, p1:ci, p2: MCVec2D(x: Double(lineNormalX), y: Double(lineNormalY))), // D
-            ]
-
-            lineVertices.append(contentsOf: vertecies)
+            lineVertices.append(contentsOf: [
+                LineVertex(x: ciX - miterX, y: ciY - miterY, lineA: ci, lineB: ciNext),
+                LineVertex(x: ciX + miterX, y: ciY + miterY, lineA: ci, lineB: ciNext),
+                LineVertex(x: ciNextX + miterX, y: ciNextY + miterY, lineA: ci, lineB: ciNext),
+                LineVertex(x: ciNextX - miterX, y: ciNextY - miterY, lineA: ci, lineB: ciNext)
+            ])
 
             indices.append(contentsOf: [
                 UInt32(4 * i), UInt32(4 * i + 1), UInt32(4 * i + 2),
@@ -137,7 +131,7 @@ extension Line2d: MCLine2dInterface {
             ])
         }
 
-        guard let verticesBuffer = device.makeBuffer(bytes: lineVertices, length: MemoryLayout<Vertex>.stride * lineVertices.count, options: []),
+        guard let verticesBuffer = device.makeBuffer(bytes: lineVertices, length: MemoryLayout<LineVertex>.stride * lineVertices.count, options: []),
               let indicesBuffer = device.makeBuffer(bytes: indices, length: MemoryLayout<UInt32>.stride * indices.count, options: [])
         else {
             fatalError("Cannot allocate buffers for the UBTileModel")
