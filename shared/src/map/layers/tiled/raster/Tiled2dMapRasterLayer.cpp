@@ -16,7 +16,6 @@
 #include "RenderObject.h"
 #include "MapCamera2dInterface.h"
 #include <map>
-#include <Logger.h>
 
 Tiled2dMapRasterLayer::Tiled2dMapRasterLayer(const std::shared_ptr<::Tiled2dMapLayerConfig> &layerConfig,
                                              const std::shared_ptr<::LoaderInterface> & tileLoader)
@@ -106,85 +105,82 @@ void Tiled2dMapRasterLayer::onTilesUpdated() {
         return;
     }
 
+    auto currentTileInfos = rasterSource->getCurrentTiles();
+    std::vector<const std::pair<const Tiled2dMapRasterTileInfo, std::shared_ptr<Textured2dLayerObject>>> tilesToSetup;
+    std::vector<std::shared_ptr<Textured2dLayerObject>> tilesToClean;
+    std::map<int, std::vector<std::shared_ptr<RenderObjectInterface>>> renderPassObjectMap;
+
     {
-        auto currentTileInfos = rasterSource->getCurrentTiles();
-        std::vector<const std::pair<const Tiled2dMapRasterTileInfo, std::shared_ptr<Textured2dLayerObject>>> tilesToSetup;
-        std::vector<std::shared_ptr<Textured2dLayerObject>> tilesToClean;
-        std::map<int, std::vector<std::shared_ptr<RenderObjectInterface>>> renderPassObjectMap;
+        std::lock_guard<std::recursive_mutex> overlayLock(updateMutex);
 
-        {
-            std::lock_guard<std::recursive_mutex> overlayLock(updateMutex);
-
-            std::unordered_set<Tiled2dMapRasterTileInfo> tilesToAdd;
-            for (const auto &rasterTileInfo : currentTileInfos) {
-                if (tileObjectMap.count(rasterTileInfo) == 0) {
-                    tilesToAdd.insert(rasterTileInfo);
-                }
-            }
-
-            std::unordered_set<Tiled2dMapRasterTileInfo> tilesToRemove;
-            for (const auto &tileEntry : tileObjectMap) {
-                if (currentTileInfos.count(tileEntry.first) == 0)
-                    tilesToRemove.insert(tileEntry.first);
-            }
-
-            if (tilesToAdd.empty() && tilesToRemove.empty()) return;
-
-
-            for (const auto &tile : tilesToAdd) {
-                auto alphaShader = shaderFactory->createAlphaShader();
-                auto tileObject = std::make_shared<Textured2dLayerObject>(
-                        graphicsFactory->createQuad(alphaShader->asShaderProgramInterface()), alphaShader, mapInterface);
-                if (layerConfig->getZoomInfo().numDrawPreviousLayers == 0) {
-                    tileObject->setAlpha(alpha);
-                } else {
-                    tileObject->beginAlphaAnimation(0.0, alpha, 150);
-                }
-                tileObject->setRectCoord(tile.tileInfo.bounds);
-                tilesToSetup.emplace_back(std::make_pair(tile, tileObject));
-                tileObjectMap[tile] = tileObject;
-            }
-
-            for (const auto &tile : tilesToRemove) {
-                auto tileObject = tileObjectMap.at(tile);
-                tilesToClean.emplace_back(tileObject);
-                tileObjectMap.erase(tile);
-            }
-
-            std::vector<std::pair<int, std::shared_ptr<Textured2dLayerObject>>> mapEntries;
-            for (auto &entry : tileObjectMap) {
-                mapEntries.emplace_back(std::make_pair(entry.first.tileInfo.zoomLevel, entry.second));
-            }
-            sort(mapEntries.begin(), mapEntries.end(),
-                 [=](std::pair<int, std::shared_ptr<Textured2dLayerObject>> &a,
-                     std::pair<int, std::shared_ptr<Textured2dLayerObject>> &b) { return a.first < b.first; });
-
-            for (const auto &objectEntry : mapEntries) {
-                objectEntry.second->getQuadObject()->asGraphicsObject();
-                for (const auto &config : objectEntry.second->getRenderConfig()) {
-                    renderPassObjectMap[config->getRenderIndex()].push_back(
-                            std::make_shared<RenderObject>(config->getGraphicsObject()));
-                }
+        std::unordered_set<Tiled2dMapRasterTileInfo> tilesToAdd;
+        for (const auto &rasterTileInfo : currentTileInfos) {
+            if (tileObjectMap.count(rasterTileInfo) == 0) {
+                tilesToAdd.insert(rasterTileInfo);
             }
         }
 
-        std::vector<std::shared_ptr<RenderPassInterface>> newRenderPasses;
-        for (const auto &passEntry : renderPassObjectMap) {
-            std::shared_ptr<RenderPass> renderPass =
-                    std::make_shared<RenderPass>(RenderPassConfig(passEntry.first), passEntry.second, mask);
-            newRenderPasses.push_back(renderPass);
-        }
-        {
-            std::lock_guard<std::recursive_mutex> overlayLock(renderPassMutex);
-            renderPasses = newRenderPasses;
+        std::unordered_set<Tiled2dMapRasterTileInfo> tilesToRemove;
+        for (const auto &tileEntry : tileObjectMap) {
+            if (currentTileInfos.count(tileEntry.first) == 0)
+                tilesToRemove.insert(tileEntry.first);
         }
 
-        std::weak_ptr<Tiled2dMapRasterLayer> selfPtr = std::dynamic_pointer_cast<Tiled2dMapRasterLayer>(shared_from_this());
-        mapInterface->getScheduler()->addTask(std::make_shared<LambdaTask>(
-                TaskConfig("Tiled2dMapRasterLayer_onTilesUpdated", 0, TaskPriority::NORMAL, ExecutionEnvironment::GRAPHICS), [selfPtr, tilesToSetup, tilesToClean] {
-                    if (selfPtr.lock()) selfPtr.lock()->setupTiles(tilesToSetup, tilesToClean);
-                }));
+        if (tilesToAdd.empty() && tilesToRemove.empty()) return;
+
+        for (const auto &tile : tilesToAdd) {
+            auto alphaShader = shaderFactory->createAlphaShader();
+            auto tileObject = std::make_shared<Textured2dLayerObject>(
+                    graphicsFactory->createQuad(alphaShader->asShaderProgramInterface()), alphaShader, mapInterface);
+            if (layerConfig->getZoomInfo().numDrawPreviousLayers == 0) {
+                tileObject->setAlpha(alpha);
+            } else {
+                tileObject->beginAlphaAnimation(0.0, alpha, 150);
+            }
+            tileObject->setRectCoord(tile.tileInfo.bounds);
+            tilesToSetup.emplace_back(std::make_pair(tile, tileObject));
+            tileObjectMap[tile] = tileObject;
+        }
+
+        for (const auto &tile : tilesToRemove) {
+            auto tileObject = tileObjectMap.at(tile);
+            tilesToClean.emplace_back(tileObject);
+            tileObjectMap.erase(tile);
+        }
+
+        std::vector<std::pair<int, std::shared_ptr<Textured2dLayerObject>>> mapEntries;
+        for (auto &entry : tileObjectMap) {
+            mapEntries.emplace_back(std::make_pair(entry.first.tileInfo.zoomLevel, entry.second));
+        }
+        sort(mapEntries.begin(), mapEntries.end(),
+             [=](std::pair<int, std::shared_ptr<Textured2dLayerObject>> &a,
+                 std::pair<int, std::shared_ptr<Textured2dLayerObject>> &b) { return a.first < b.first; });
+
+        for (const auto &objectEntry : mapEntries) {
+            objectEntry.second->getQuadObject()->asGraphicsObject();
+            for (const auto &config : objectEntry.second->getRenderConfig()) {
+                renderPassObjectMap[config->getRenderIndex()].push_back(
+                        std::make_shared<RenderObject>(config->getGraphicsObject()));
+            }
+        }
     }
+
+    std::vector<std::shared_ptr<RenderPassInterface>> newRenderPasses;
+    for (const auto &passEntry : renderPassObjectMap) {
+        std::shared_ptr<RenderPass> renderPass =
+                std::make_shared<RenderPass>(RenderPassConfig(passEntry.first), passEntry.second, mask);
+        newRenderPasses.push_back(renderPass);
+    }
+    {
+        std::lock_guard<std::recursive_mutex> overlayLock(renderPassMutex);
+        renderPasses = newRenderPasses;
+    }
+
+    std::weak_ptr<Tiled2dMapRasterLayer> selfPtr = std::dynamic_pointer_cast<Tiled2dMapRasterLayer>(shared_from_this());
+    mapInterface->getScheduler()->addTask(std::make_shared<LambdaTask>(
+            TaskConfig("Tiled2dMapRasterLayer_onTilesUpdated", 0, TaskPriority::NORMAL, ExecutionEnvironment::GRAPHICS), [selfPtr, tilesToSetup, tilesToClean] {
+                if (selfPtr.lock()) selfPtr.lock()->setupTiles(tilesToSetup, tilesToClean);
+            }));
 }
 
 void Tiled2dMapRasterLayer::setupTiles(

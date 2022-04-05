@@ -12,37 +12,32 @@
 #include "LoaderStatus.h"
 #include "Tiled2dMapSource.h"
 
+#include <chrono>
 #include <algorithm>
 
-template <class T, class L, class R>
+template<class T, class L, class R>
 Tiled2dMapSource<T, L, R>::Tiled2dMapSource(const MapConfig &mapConfig, const std::shared_ptr<Tiled2dMapLayerConfig> &layerConfig,
-                                         const std::shared_ptr<CoordinateConversionHelperInterface> &conversionHelper,
-                                         const std::shared_ptr<SchedulerInterface> &scheduler,
-                                         const std::shared_ptr<Tiled2dMapSourceListenerInterface> &listener)
-    : mapConfig(mapConfig)
-    , layerConfig(layerConfig)
-    , conversionHelper(conversionHelper)
-    , scheduler(scheduler)
-    , listener(listener)
-    , zoomLevelInfos(layerConfig->getZoomLevelInfos())
-    , zoomInfo(layerConfig->getZoomInfo())
-    , layerSystemId(layerConfig->getCoordinateSystemIdentifier())
-    , dispatchedTasks(0)
-    , isPaused(false) {
+                                            const std::shared_ptr<CoordinateConversionHelperInterface> &conversionHelper,
+                                            const std::shared_ptr<SchedulerInterface> &scheduler,
+                                            const std::shared_ptr<Tiled2dMapSourceListenerInterface> &listener)
+        : mapConfig(mapConfig), layerConfig(layerConfig), conversionHelper(conversionHelper), scheduler(scheduler),
+          listener(listener), zoomLevelInfos(layerConfig->getZoomLevelInfos()), zoomInfo(layerConfig->getZoomInfo()),
+          layerSystemId(layerConfig->getCoordinateSystemIdentifier()), dispatchedTasks(0), isPaused(false) {
     std::sort(zoomLevelInfos.begin(), zoomLevelInfos.end(),
               [](const Tiled2dMapZoomLevelInfo &a, const Tiled2dMapZoomLevelInfo &b) -> bool { return a.zoom > b.zoom; });
 }
 
-template <class T, class L, class R>
+template<class T, class L, class R>
 void Tiled2dMapSource<T, L, R>::onVisibleBoundsChanged(const ::RectCoord &visibleBounds, double zoom) {
-    if (isPaused) {
+    if (isPaused.load()) {
         return;
     }
     std::weak_ptr<Tiled2dMapSource> selfPtr = std::dynamic_pointer_cast<Tiled2dMapSource>(shared_from_this());
     scheduler->addTask(std::make_shared<LambdaTask>(
-                                                    TaskConfig("Tiled2dMapSource_Update", 0, TaskPriority::NORMAL, ExecutionEnvironment::IO), [selfPtr, visibleBounds, zoom] {
-                                                        if (selfPtr.lock()) selfPtr.lock()->updateCurrentTileset(visibleBounds, zoom);
-                                                    }));
+            TaskConfig("Tiled2dMapSource_Update", 0, TaskPriority::NORMAL, ExecutionEnvironment::IO),
+            [selfPtr, visibleBounds, zoom] {
+                if (selfPtr.lock()) selfPtr.lock()->updateCurrentTileset(visibleBounds, zoom);
+            }));
 }
 
 template<class T, class L, class R>
@@ -51,7 +46,8 @@ bool Tiled2dMapSource<T, L, R>::isTileVisible(const Tiled2dMapTileInfo &tileInfo
     return currentVisibleTiles.count(tileInfo) > 0;
 }
 
-template <class T, class L, class R> void Tiled2dMapSource<T, L, R>::updateCurrentTileset(const RectCoord &visibleBounds, double zoom) {
+template<class T, class L, class R>
+void Tiled2dMapSource<T, L, R>::updateCurrentTileset(const RectCoord &visibleBounds, double zoom) {
     std::unordered_set<PrioritizedTiled2dMapTileInfo> visibleTiles;
 
     RectCoord visibleBoundsLayer = conversionHelper->convertRect(layerSystemId, visibleBounds);
@@ -68,7 +64,7 @@ template <class T, class L, class R> void Tiled2dMapSource<T, L, R>::updateCurre
             break;
         }
     }
-    if (targetZoomLayer < 0) targetZoomLayer = (int)numZoomLevels - 1;
+    if (targetZoomLayer < 0) targetZoomLayer = (int) numZoomLevels - 1;
     int startZoomLayer = std::max(targetZoomLayer - zoomInfo.numDrawPreviousLayers, 0);
 
     int zoomInd = 0;
@@ -76,7 +72,7 @@ template <class T, class L, class R> void Tiled2dMapSource<T, L, R>::updateCurre
     for (int i = startZoomLayer; i <= targetZoomLayer; i++) {
         const Tiled2dMapZoomLevelInfo &zoomLevelInfo = zoomLevelInfos.at(i);
 
-        if(minZoomLevelIdentifier.has_value() && zoomLevelInfo.zoomLevelIdentifier < minZoomLevelIdentifier) {
+        if (minZoomLevelIdentifier.has_value() && zoomLevelInfo.zoomLevelIdentifier < minZoomLevelIdentifier) {
             continue;
         }
         if (maxZoomLevelIdentifier.has_value() && zoomLevelInfo.zoomLevelIdentifier > maxZoomLevelIdentifier) {
@@ -98,7 +94,7 @@ template <class T, class L, class R> void Tiled2dMapSource<T, L, R>::updateCurre
         double visibleWidth = std::abs(visibleLeft - visibleRight);
         double boundsLeft = layerBounds.topLeft.x;
         int startTileLeft =
-            std::floor(std::max(leftToRight ? (visibleLeft - boundsLeft) : (boundsLeft - visibleLeft), 0.0) / tileWidth);
+                std::floor(std::max(leftToRight ? (visibleLeft - boundsLeft) : (boundsLeft - visibleLeft), 0.0) / tileWidth);
         int maxTileLeft = std::ceil(visibleWidth / tileWidth) + startTileLeft;
         double visibleTop = visibleBoundsLayer.topLeft.y;
         double visibleBottom = visibleBoundsLayer.bottomRight.y;
@@ -127,11 +123,11 @@ template <class T, class L, class R> void Tiled2dMapSource<T, L, R>::updateCurre
                 double tileCenterX = minCorner.x + 0.5f * (maxCorner.x - minCorner.x);
                 double tileCenterY = minCorner.y + 0.5f * (maxCorner.y - minCorner.y);
                 double tileCenterDis =
-                    std::sqrt(std::pow(tileCenterX - centerVisibleX, 2.0) + std::pow(tileCenterY - centerVisibleY, 2.0));
+                        std::sqrt(std::pow(tileCenterX - centerVisibleX, 2.0) + std::pow(tileCenterY - centerVisibleY, 2.0));
 
                 visibleTiles.insert(PrioritizedTiled2dMapTileInfo(
-                    Tiled2dMapTileInfo(rect, x, y, zoomLevelInfo.zoomLevelIdentifier, i),
-                    std::ceil((tileCenterDis / maxDisCenter) * zoomPriorityRange) + zoomInd * zoomPriorityRange));
+                        Tiled2dMapTileInfo(rect, x, y, zoomLevelInfo.zoomLevelIdentifier, i),
+                        std::ceil((tileCenterDis / maxDisCenter) * zoomPriorityRange) + zoomInd * zoomPriorityRange));
             }
         }
 
@@ -142,7 +138,7 @@ template <class T, class L, class R> void Tiled2dMapSource<T, L, R>::updateCurre
     currentViewBounds = visibleBoundsLayer;
 }
 
-template <class T, class L, class R>
+template<class T, class L, class R>
 void Tiled2dMapSource<T, L, R>::onVisibleTilesChanged(const std::unordered_set<PrioritizedTiled2dMapTileInfo> &visibleTiles) {
     std::lock_guard<std::recursive_mutex> lock(tilesMutex);
     currentVisibleTiles.clear();
@@ -205,29 +201,46 @@ void Tiled2dMapSource<T, L, R>::onVisibleTilesChanged(const std::unordered_set<P
         }
     }
 
-    size_t errorTilesCount = errorTiles.size();
+    int32_t runningTasks = (int32_t) dispatchedTasks.load();
+    int32_t tasksToStart = std::min(std::max(0, MAX_NUM_LOADER_TASKS - runningTasks), (int32_t) loadingQueue.size());
+    if (runningTasks < MAX_NUM_LOADER_TASKS) {
+        for (int i = 0; i < tasksToStart; i++) {
+            auto taskIdentifier = "Tiled2dMapSource_loadingTask" + std::to_string(i);
 
-    size_t totalOutstandingTasks = errorTilesCount + loadingQueue.size();
-    size_t dispatchedTaskCount = dispatchedTasks.load();
-    size_t tasksToAdd = totalOutstandingTasks > dispatchedTaskCount ? totalOutstandingTasks - dispatchedTaskCount : 0;
-    for (int taskCount = 0; taskCount < tasksToAdd; taskCount++) {
-        auto taskIdentifier = "Tiled2dMapSource_loadingTask" + std::to_string(taskCount);
+            std::weak_ptr<Tiled2dMapSource> selfPtr = std::dynamic_pointer_cast<Tiled2dMapSource>(shared_from_this());
+            scheduler->addTask(std::make_shared<LambdaTask>(
+                    TaskConfig(taskIdentifier, 0, TaskPriority::NORMAL, ExecutionEnvironment::IO), [selfPtr] {
+                        std::shared_ptr<Tiled2dMapSource> self = selfPtr.lock();
+                        while (self && !self->isPaused.load()) {
+                            const auto tile = self->dequeueLoadingTask();
+                            if (!tile.has_value()) {
+                                auto minErrorDelay = self->getMinErrorDelay();
+                                if (minErrorDelay.has_value()) {
+                                    {
+                                        std::unique_lock<std::mutex> waitLock(self->loaderMutex);
+                                        self->loaderConditionVariable.wait_for(waitLock, std::chrono::milliseconds(*minErrorDelay));
+                                    }
+                                    continue;
+                                }
+                                break;
+                            }
+                            self->performLoadingTask(*tile);
 
-        std::weak_ptr<Tiled2dMapSource> selfPtr = std::dynamic_pointer_cast<Tiled2dMapSource>(shared_from_this());
-        scheduler->addTask(std::make_shared<LambdaTask>(
-            TaskConfig(taskIdentifier, 0, TaskPriority::NORMAL, ExecutionEnvironment::IO), [selfPtr] {
-                if (selfPtr.lock()) selfPtr.lock()->performLoadingTask();
-            }));
-        dispatchedTasks++;
+                            self = selfPtr.lock();
+                        }
+                        if (self) self->dispatchedTasks--;
+                    }));
+            dispatchedTasks++;
+        }
     }
+    loaderConditionVariable.notify_all();
 
     if (listener.lock()) listener.lock()->onTilesUpdated();
 }
 
-template <class T, class L, class R> std::optional<Tiled2dMapTileInfo> Tiled2dMapSource<T, L, R>::dequeueLoadingTask() {
+template<class T, class L, class R>
+std::optional<Tiled2dMapTileInfo> Tiled2dMapSource<T, L, R>::dequeueLoadingTask() {
     std::lock_guard<std::recursive_mutex> lock(tilesMutex);
-
-    dispatchedTasks--;
 
     if (loadingQueue.empty()) {
         for (auto const &errorTile : errorTiles) {
@@ -249,70 +262,71 @@ template <class T, class L, class R> std::optional<Tiled2dMapTileInfo> Tiled2dMa
     return tileInfo;
 }
 
-template <class T, class L, class R> void Tiled2dMapSource<T, L, R>::performLoadingTask() {
-    if (auto tile = dequeueLoadingTask()) {
-        auto loaderResult = loadTile(*tile);
-
-
-        LoaderStatus status = loaderResult.status;
-
-        switch (status) {
-            case LoaderStatus::OK: {
-                bool isVisible;
-                {
-                    std::lock_guard<std::recursive_mutex> lock(tilesMutex);
-                    isVisible = currentVisibleTiles.count(*tile);
-                }
-                if (isVisible) {
-                    R da = postLoadingTask(loaderResult, *tile);
-
-                    std::lock_guard<std::recursive_mutex> lock(tilesMutex);
-                    currentTiles[*tile] = std::move(da);
-
-                    errorTiles.erase(*tile);
-                }
-                break;
-            }
-            case LoaderStatus::ERROR_400:
-            case LoaderStatus::ERROR_404: {
-                std::lock_guard<std::recursive_mutex> lock(tilesMutex);
-                notFoundTiles.insert(*tile);
-                break;
-            }
-
-            case LoaderStatus::ERROR_TIMEOUT:
-            case LoaderStatus::ERROR_OTHER:
-            case LoaderStatus::ERROR_NETWORK: {
-                int64_t delay = 0;
-                {
-                    std::lock_guard<std::recursive_mutex> lock(tilesMutex);
-                    if (errorTiles.count(*tile) != 0) {
-                        errorTiles[*tile].lastLoad = DateHelper::currentTimeMillis();
-                        errorTiles[*tile].delay = std::min(2 * errorTiles[*tile].delay, MAX_WAIT_TIME);
-                    } else {
-                        errorTiles[*tile] = {DateHelper::currentTimeMillis(), MIN_WAIT_TIME};
-                    }
-                    delay = errorTiles[*tile].delay;
-                    dispatchedTasks++;
-                }
-                auto taskIdentifier = "Tiled2dMapSource_loadingErrorTask";
-
-                std::weak_ptr<Tiled2dMapSource> selfPtr = std::dynamic_pointer_cast<Tiled2dMapSource>(shared_from_this());
-                scheduler->addTask(std::make_shared<LambdaTask>(
-                        TaskConfig(taskIdentifier, delay, TaskPriority::NORMAL, ExecutionEnvironment::IO), [selfPtr] {
-                            if (selfPtr.lock()) selfPtr.lock()->performLoadingTask();
-                        }));
-                break;
-            }
+template<class T, class L, class R>
+std::optional<int64_t> Tiled2dMapSource<T, L, R>::getMinErrorDelay() {
+    std::lock_guard<std::recursive_mutex> lock(tilesMutex);
+    int64_t minDelay = MAX_WAIT_TIME + 1;
+    for (auto const &errorTile : errorTiles) {
+        if (errorTile.second.delay <= minDelay) {
+            minDelay = errorTile.second.delay;
         }
-
-        {
-            std::lock_guard<std::recursive_mutex> lock(tilesMutex);
-            currentlyLoading.erase(*tile);
-        }
-
-        if (listener.lock()) listener.lock()->onTilesUpdated();
     }
+    if (minDelay <= MAX_WAIT_TIME) {
+        return minDelay;
+    } else {
+        return std::nullopt;
+    }
+}
+
+template<class T, class L, class R>
+void Tiled2dMapSource<T, L, R>::performLoadingTask(const Tiled2dMapTileInfo &tile) {
+    auto loaderResult = loadTile(tile);
+
+    LoaderStatus status = loaderResult.status;
+
+    switch (status) {
+        case LoaderStatus::OK: {
+            bool isVisible;
+            {
+                std::lock_guard<std::recursive_mutex> lock(tilesMutex);
+                isVisible = currentVisibleTiles.count(tile);
+            }
+            if (isVisible) {
+                R da = postLoadingTask(loaderResult, tile);
+
+                std::lock_guard<std::recursive_mutex> lock(tilesMutex);
+                currentTiles[tile] = std::move(da);
+
+                errorTiles.erase(tile);
+            }
+            break;
+        }
+        case LoaderStatus::ERROR_400:
+        case LoaderStatus::ERROR_404: {
+            std::lock_guard<std::recursive_mutex> lock(tilesMutex);
+            notFoundTiles.insert(tile);
+            break;
+        }
+
+        case LoaderStatus::ERROR_TIMEOUT:
+        case LoaderStatus::ERROR_OTHER:
+        case LoaderStatus::ERROR_NETWORK: {
+            std::lock_guard<std::recursive_mutex> lock(tilesMutex);
+            if (errorTiles.count(tile) != 0) {
+                errorTiles[tile].lastLoad = DateHelper::currentTimeMillis();
+                errorTiles[tile].delay = std::min(2 * errorTiles[tile].delay, MAX_WAIT_TIME);
+            } else {
+                errorTiles[tile] = {DateHelper::currentTimeMillis(), MIN_WAIT_TIME};
+            }
+        }
+    }
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(tilesMutex);
+        currentlyLoading.erase(tile);
+    }
+
+    if (listener.lock()) listener.lock()->onTilesUpdated();
 }
 
 template<class T, class L, class R>
@@ -324,6 +338,7 @@ template<class T, class L, class R>
 void Tiled2dMapSource<T, L, R>::setMinZoomLevelIdentifier(std::optional<int32_t> value) {
     minZoomLevelIdentifier = value;
 }
+
 template<class T, class L, class R>
 void Tiled2dMapSource<T, L, R>::setMaxZoomLevelIdentifier(std::optional<int32_t> value) {
     maxZoomLevelIdentifier = value;

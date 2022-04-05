@@ -82,13 +82,14 @@ template <class T, class L, class R> class Tiled2dMapSource :
     RectCoord currentViewBounds = RectCoord(Coord(CoordinateSystemIdentifiers::RENDERSYSTEM(), 0.0, 0.0, 0.0),
                                             Coord(CoordinateSystemIdentifiers::RENDERSYSTEM(), 0.0, 0.0, 0.0));
 
-
-    std::atomic<bool> isPaused;
-
   private:
     void updateCurrentTileset(const ::RectCoord &visibleBounds, double zoom);
 
-    void performLoadingTask();
+    std::optional<Tiled2dMapTileInfo> dequeueLoadingTask();
+
+    std::optional<int64_t> getMinErrorDelay();
+
+    void performLoadingTask(const Tiled2dMapTileInfo &tile);
 
     void onVisibleTilesChanged(const std::unordered_set<PrioritizedTiled2dMapTileInfo> &visibleTiles);
 
@@ -96,7 +97,7 @@ template <class T, class L, class R> class Tiled2dMapSource :
     std::unordered_set<Tiled2dMapTileInfo> currentlyLoading;
     std::unordered_set<PrioritizedTiled2dMapTileInfo> loadingQueue;
 
-    const long long MAX_WAIT_TIME = 32000;
+    const long long MAX_WAIT_TIME = 16000;
     const long long MIN_WAIT_TIME = 1000;
 
     struct ErrorInfo {
@@ -107,7 +108,10 @@ template <class T, class L, class R> class Tiled2dMapSource :
     std::unordered_map<Tiled2dMapTileInfo, ErrorInfo> errorTiles;
     std::unordered_set<Tiled2dMapTileInfo> notFoundTiles;
 
-    std::optional<Tiled2dMapTileInfo> dequeueLoadingTask();
+    std::atomic<bool> isPaused;
+    std::mutex loaderMutex;
+    std::condition_variable loaderConditionVariable;
+    const int32_t MAX_NUM_LOADER_TASKS = 8;
 };
 
 #include "Tiled2dMapSourceImpl.h"
