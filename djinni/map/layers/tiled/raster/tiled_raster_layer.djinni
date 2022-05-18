@@ -19,6 +19,8 @@ tiled_2d_map_raster_layer_interface = interface +c {
 
     set_max_zoom_level_identifier(value: optional<i32>);
     get_max_zoom_level_identifier(): optional<i32>;
+
+    get_config(): tiled_2d_map_layer_config;
 }
 
 tiled_2d_map_raster_layer_callback_interface = interface +c +j +o {

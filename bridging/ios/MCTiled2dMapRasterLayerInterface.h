@@ -39,4 +39,6 @@
 
 - (nullable NSNumber *)getMaxZoomLevelIdentifier;
 
+- (nullable id<MCTiled2dMapLayerConfig>)getConfig;
+
 @end

@@ -40,4 +40,6 @@ public:
     virtual void setMaxZoomLevelIdentifier(std::optional<int32_t> value) = 0;
 
     virtual std::optional<int32_t> getMaxZoomLevelIdentifier() = 0;
+
+    virtual std::shared_ptr<::Tiled2dMapLayerConfig> getConfig() = 0;
 };

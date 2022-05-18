@@ -18,13 +18,13 @@
 #include <map>
 #include <Logger.h>
 
-Tiled2dMapRasterLayer::Tiled2dMapRasterLayer(const std::shared_ptr<::Tiled2dMapLayerConfig> &layerConfig,
+Tiled2dMapRasterLayer::Tiled2dMapRasterLayer(const std::shared_ptr<::Tiled2dMapLayerConfig> &layerConfig_,
                                              const std::shared_ptr<::LoaderInterface> & tileLoader)
-: Tiled2dMapLayer(layerConfig), textureLoader(tileLoader), alpha(1.0) {}
+: Tiled2dMapLayer(layerConfig_), textureLoader(tileLoader), alpha(1.0) {}
 
-Tiled2dMapRasterLayer::Tiled2dMapRasterLayer(const std::shared_ptr<::Tiled2dMapLayerConfig> &layerConfig,
+Tiled2dMapRasterLayer::Tiled2dMapRasterLayer(const std::shared_ptr<::Tiled2dMapLayerConfig> &layerConfig_,
                                              const std::shared_ptr<::LoaderInterface> & tileLoader,
-                                             const std::shared_ptr<::MaskingObjectInterface> & mask): Tiled2dMapLayer(layerConfig), textureLoader(tileLoader), alpha(1.0),
+                                             const std::shared_ptr<::MaskingObjectInterface> & mask): Tiled2dMapLayer(layerConfig_), textureLoader(tileLoader), alpha(1.0),
                                                  mask(mask) {}
 
 void Tiled2dMapRasterLayer::onAdded(const std::shared_ptr<::MapInterface> &mapInterface) {
@@ -324,3 +324,8 @@ void Tiled2dMapRasterLayer::setMaxZoomLevelIdentifier(std::optional<int32_t> val
 std::optional<int32_t> Tiled2dMapRasterLayer::getMaxZoomLevelIdentifier() {
     return Tiled2dMapLayer::getMaxZoomLevelIdentifier();
 }
+
+std::shared_ptr<::Tiled2dMapLayerConfig> Tiled2dMapRasterLayer::getConfig() {
+    return Tiled2dMapLayer::layerConfig;
+}
+

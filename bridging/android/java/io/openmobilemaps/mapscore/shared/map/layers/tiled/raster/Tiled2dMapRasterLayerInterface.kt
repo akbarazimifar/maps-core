@@ -27,6 +27,8 @@ abstract class Tiled2dMapRasterLayerInterface {
 
     abstract fun getMaxZoomLevelIdentifier(): Int?
 
+    abstract fun getConfig(): io.openmobilemaps.mapscore.shared.map.layers.tiled.Tiled2dMapLayerConfig
+
     companion object {
         @JvmStatic
         fun createWithMask(layerConfig: io.openmobilemaps.mapscore.shared.map.layers.tiled.Tiled2dMapLayerConfig, loader: io.openmobilemaps.mapscore.shared.map.loader.LoaderInterface, mask: io.openmobilemaps.mapscore.shared.graphics.objects.MaskingObjectInterface): Tiled2dMapRasterLayerInterface {
@@ -116,6 +118,12 @@ abstract class Tiled2dMapRasterLayerInterface {
             return native_getMaxZoomLevelIdentifier(this.nativeRef)
         }
         private external fun native_getMaxZoomLevelIdentifier(_nativeRef: Long): Int?
+
+        override fun getConfig(): io.openmobilemaps.mapscore.shared.map.layers.tiled.Tiled2dMapLayerConfig {
+            assert(!this.destroyed.get()) { error("trying to use a destroyed object") }
+            return native_getConfig(this.nativeRef)
+        }
+        private external fun native_getConfig(_nativeRef: Long): io.openmobilemaps.mapscore.shared.map.layers.tiled.Tiled2dMapLayerConfig
 
         companion object {
             @JvmStatic
