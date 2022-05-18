@@ -52,6 +52,10 @@ public:
 
         auto description = layers.at(identifier);
 
+        if (description.tileMatrixSetLink == "") {
+            return nullptr;
+        }
+
         auto matrixSet = matrixSets.at(description.tileMatrixSetLink);
 
         std::unordered_map<std::string, std::string> dimensions;
@@ -108,9 +112,22 @@ private:
         std::optional<std::string> abstractText = layer.child_value("ows:Abstract");
         std::vector<WmtsLayerDimension> dimensions;
 
+        if (identifier == "") {
+            identifier = layer.child("Name").child_value();
+        }
+        if (!title || title == "") {
+            title = layer.child_value("Title");
+        }
+
         for(auto dimension = layer.child("Dimension"); dimension; dimension = dimension.next_sibling("Dimension")) {
             std::string dimensionIdentifier = dimension.child_value("ows:Identifier");
+            if (dimensionIdentifier == "") {
+                dimensionIdentifier = dimension.child_value("name");
+            }
             std::string defaultValue = dimension.child_value("Default");
+            if (defaultValue == "") {
+                defaultValue = dimension.child_value("default");
+            }
             std::vector<std::string> dimensionValues;
             for (auto value = dimension.child("Value"); value; value = value.next_sibling("Value")) {
                 dimensionValues.push_back(value.child_value());
@@ -193,6 +210,11 @@ private:
     void parseDoc() {
         auto root = doc.child("Capabilities");
         auto contents = root.child("Contents");
+
+        if (!contents) {
+            root = doc.child("WMS_Capabilities");
+            contents = root.child("Capability").child("Layer");
+        }
 
         for (auto layer = contents.child("Layer"); layer; layer = layer.next_sibling("Layer")) {
             parseLayer(layer);
