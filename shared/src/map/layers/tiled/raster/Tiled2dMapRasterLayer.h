@@ -78,7 +78,11 @@ public:
 
     virtual void setScissorRect(const std::optional<::RectI> & scissorRect) override;
 
-    virtual std::shared_ptr<::Tiled2dMapLayerConfig> getConfig() override;
+    virtual void enableAnimations(bool enabled) override;
+
+virtual std::shared_ptr<::Tiled2dMapLayerConfig> getConfig() override;
+
+ virtual LayerReadyState isReadyToRenderOffscreen() override;
 
 private:            
     std::optional<::RectI> scissorRect = std::nullopt;
@@ -95,4 +99,5 @@ private:
     std::shared_ptr<Tiled2dMapRasterLayerCallbackInterface> callbackHandler;
 
     double alpha;
+    bool animationsEnabled = true;
 };
